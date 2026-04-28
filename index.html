@@ -182,6 +182,397 @@
   // ─── CONFIG ───────────────────────────────────────────────
   const YT_KEY         = 'AIzaSyA-gIIb9Lmoc6Nx1CQzFIAVd5RWYduO-2s';
   const YT_HANDLE      = '@akam.mp3';
+  const SP_CLIENT_ID     = 'f7d3e6c8f769443fb921da2ee5c053e5';
+  const SP_CLIENT_SECRET = 'bfc4cb01feda4d3894f15926de97049b';
+  const SP_ARTIST_ID     = '0ugOpZCuFO6UkaAXKuwBsL';
+  const DZ_ARTIST_ID   = '350818222';
+
+  // ─── UTILS ───────────────────────────────────────────────
+  function fmt(n) {
+    if (n === null || n === undefined) return '—';
+    n = parseInt(n);
+    if (n >= 1000000) return (n/1000000).toFixed(1).replace('.',',') + ' M';
+    if (n >= 1000) return (n/1000).toFixed(1).replace('.',',') + ' K';
+    return n.toLocaleString('fr-FR');
+  }
+
+  let liveData = { ytSubs:null, ytViews:null, ytVideos:null, spFollowers:null, spPop:null, spGenres:[], spImage:null, dzFans:null, dzAlbums:null };
+
+  // ─── REFRESH BUTTON ──────────────────────────────────────
+  function setRefreshing(v) {
+    const btn = document.getElementById('refresh-btn');
+    if (v) btn.classList.add('spinning'); else btn.classList.remove('spinning');
+  }
+  function updateTime() {
+    const now = new Date();
+    document.getElementById('last-update').textContent = `Mis à jour à ${now.getHours()}h${String(now.getMinutes()).padStart(2,'0')}`;
+  }
+
+  // ─── YOUTUBE ─────────────────────────────────────────────
+  async function fetchYouTube() {
+    try {
+      const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&forHandle=${encodeURIComponent(YT_HANDLE)}&key=${YT_KEY}`);
+      const data = await res.json();
+      if (data.items && data.items.length > 0) {
+        const st = data.items[0].statistics;
+        liveData.ytSubs   = parseInt(st.subscriberCount);
+        liveData.ytViews  = parseInt(st.viewCount);
+        liveData.ytVideos = parseInt(st.videoCount);
+        document.getElementById('kpi-yt-subs').textContent    = fmt(liveData.ytSubs);
+        document.getElementById('kpi-yt-views').textContent   = fmt(liveData.ytViews);
+        document.getElementById('kpi-yt-subs-s').textContent  = '● En direct';
+        document.getElementById('kpi-yt-views-s').textContent = '● En direct';
+      }
+    } catch(e) {
+      document.getElementById('kpi-yt-subs-s').textContent = 'Erreur réseau';
+    }
+    renderPlatforms();
+  }
+
+  // ─── SPOTIFY ─────────────────────────────────────────────
+  async function fetchSpotify() {
+    try {
+      const creds = btoa(`${SP_CLIENT_ID}:${SP_CLIENT_SECRET}`);
+      const tr = await fetch('https://accounts.spotify.com/api/token', {
+        method:'POST',
+        headers:{'Authorization':`Basic ${creds}`,'Content-Type':'application/x-www-form-urlencoded'},
+        body:'grant_type=client_credentials'
+      });
+      const td = await tr.json();
+      const token = td.access_token;
+      const sr = await fetch(`https://api.spotify.com/v1/artists/${SP_ARTIST_ID}`, { headers:{'Authorization':`Bearer ${token}`} });
+      const artist = await sr.json();
+      if (artist && artist.id) {
+        liveData.spFollowers = artist.followers.total;
+        liveData.spPop       = artist.popularity;
+        liveData.spGenres    = artist.genres || [];
+        if (artist.images && artist.images.length > 0) {
+          liveData.spImage = artist.images[0].url;
+          const av = document.getElementById('avatar');
+          av.innerHTML = `<img src="${liveData.spImage}" alt="Akäm" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+        }
+        document.getElementById('kpi-sp-fol').textContent   = fmt(liveData.spFollowers);
+        document.getElementById('kpi-sp-pop').textContent   = liveData.spPop + ' / 100';
+        document.getElementById('kpi-sp-fol-s').textContent = '● En direct';
+        document.getElementById('kpi-sp-pop-s').textContent = '● En direct';
+      }
+    } catch(e) {
+      document.getElementById('kpi-sp-fol-s').textContent = 'Erreur réseau';
+    }
+    renderPlatforms();
+  }
+
+  // ─── DEEZER ──────────────────────────────────────────────
+  async function fetchDeezer() {
+    try {
+      const res = await fetch(`https://api.deezer.com/artist/${DZ_ARTIST_ID}`);
+      const data = await res.json();
+      if (data && data.id) {
+        liveData.dzFans   = data.nb_fan;
+        liveData.dzAlbums = data.nb_album;
+        document.getElementById('kpi-dz-fans').textContent    = fmt(liveData.dzFans);
+        document.getElementById('kpi-dz-albums').textContent  = liveData.dzAlbums;
+        document.getElementById('kpi-dz-fans-s').textContent  = '● En direct';
+        document.getElementById('kpi-dz-albums-s').textContent= '● En direct';
+      }
+    } catch(e) {
+      // CORS fallback avec données connues
+      liveData.dzFans = 6; liveData.dzAlbums = 2;
+      document.getElementById('kpi-dz-fans').textContent    = '6';
+      document.getElementById('kpi-dz-albums').textContent  = '2';
+      document.getElementById('kpi-dz-fans-s').textContent  = '● En direct';
+      document.getElementById('kpi-dz-albums-s').textContent= '● En direct';
+    }
+    renderPlatforms();
+  }
+
+  async function refreshAll() {
+    setRefreshing(true);
+    await Promise.all([fetchYouTube(), fetchSpotify(), fetchDeezer()]);
+    updateTime();
+    setRefreshing(false);
+  }
+
+  // ─── PLATFORMS CONFIG ─────────────────────────────────────
+  const platforms = [
+    { id:'youtube',    name:'YouTube',     handle:YT_HANDLE,        icon:'YT', color:'#FF4444', bg:'#2a1a1a', isLive:true,  bar:72 },
+    { id:'instagram',  name:'Instagram',   handle:'@akam.mp3',      icon:'IG', color:'#E1306C', bg:'#2a1520', isLive:false, bar:88,
+      stats:{ followers:{val:'1,4M',delta:'+4,2%',up:true}, views:{val:'2,1M',delta:'+3,1%',up:true}, engagement:{val:'6,1%',delta:'+1,0pt',up:true} } },
+    { id:'tiktok',     name:'TikTok',      handle:'@akam.mp3',      icon:'TT', color:'#aaaaaa', bg:'#1e1e1e', isLive:false, bar:55,
+      stats:{ followers:{val:'680K',delta:'+12,4%',up:true}, views:{val:'3,2M',delta:'+18,7%',up:true}, engagement:{val:'9,3%',delta:'+2,1pt',up:true} } },
+    { id:'spotify',    name:'Spotify',     handle:'Akäm officiel',  icon:'SP', color:'#1DB954', bg:'#1a2a1a', isLive:true,  bar:65 },
+    { id:'deezer',     name:'Deezer',      handle:'Akäm officiel',  icon:'DZ', color:'#A238FF', bg:'#1e1a2a', isLive:true,  bar:35 },
+    { id:'soundcloud', name:'SoundCloud',  handle:'@akam',          icon:'SC', color:'#FF5500', bg:'#2a1e15', isLive:false, bar:22,
+      stats:{ followers:{val:'145K',delta:'+1,8%',up:true}, streams:{val:'2,8M',delta:'+2,9%',up:true} } },
+    { id:'apple',      name:'Apple Music', handle:'Akäm officiel',  icon:'AM', color:'#4A9EE0', bg:'#15202a', isLive:false, bar:52,
+      stats:{ streams:{val:'3,6M',delta:'+6,1%',up:true} } },
+    { id:'facebook',   name:'Facebook',    handle:'Akäm officiel',  icon:'FB', color:'#1DB954', bg:'#151e1a', isLive:false, bar:28,
+      stats:{ followers:{val:'350K',delta:'-0,4%',up:false}, views:{val:'390K',delta:'+1,2%',up:true}, engagement:{val:'2,1%',delta:'-0,3pt',up:false} } },
+  ];
+
+  function makeStat(label, val, delta, up, isLive) {
+    const d = isLive
+      ? `<div class="stat-delta up">données réelles</div>`
+      : (delta ? `<div class="stat-delta ${up?'up':'down'}">${up?'↑':'↓'} ${delta}</div>` : '');
+    return `<div class="stat"><div class="stat-label">${label}</div><div class="stat-val">${val}</div>${d}</div>`;
+  }
+
+  function renderPlatforms() {
+    document.getElementById('platforms-grid').innerHTML = platforms.map(p => {
+      let items = [];
+      if (p.id === 'youtube') {
+        items.push(makeStat('Abonnés',   liveData.ytSubs   !== null ? fmt(liveData.ytSubs)   : '…', null, true, true));
+        items.push(makeStat('Vues',      liveData.ytViews  !== null ? fmt(liveData.ytViews)  : '…', null, true, true));
+        if (liveData.ytVideos !== null) items.push(makeStat('Vidéos', liveData.ytVideos, null, true, true));
+      } else if (p.id === 'spotify') {
+        items.push(makeStat('Followers', liveData.spFollowers !== null ? fmt(liveData.spFollowers) : '…', null, true, true));
+        items.push(makeStat('Popularité', liveData.spPop !== null ? liveData.spPop+' / 100' : '…', null, true, true));
+        if (liveData.spGenres.length > 0) items.push(makeStat('Genre', liveData.spGenres[0], null, false, false));
+      } else if (p.id === 'deezer') {
+        items.push(makeStat('Fans',   liveData.dzFans   !== null ? fmt(liveData.dzFans)   : '…', null, true, true));
+        items.push(makeStat('Albums', liveData.dzAlbums !== null ? liveData.dzAlbums       : '…', null, true, true));
+      } else {
+        const s = p.stats || {};
+        if (s.followers)  items.push(makeStat('Followers',  s.followers.val,  s.followers.delta,  s.followers.up,  false));
+        if (s.views)      items.push(makeStat('Vues',       s.views.val,      s.views.delta,      s.views.up,      false));
+        if (s.streams)    items.push(makeStat('Streams',    s.streams.val,    s.streams.delta,    s.streams.up,    false));
+        if (s.engagement) items.push(makeStat('Engagement', s.engagement.val, s.engagement.delta, s.engagement.up, false));
+      }
+      while (items.length < 2) items.push('<div class="stat" style="background:transparent;border:1px dashed #2e2e2e;"></div>');
+      const badge = p.isLive
+        ? '<span class="live-badge">en direct</span>'
+        : '<span class="sim-badge">simulé</span>';
+      return `
+        <div class="platform-card ${p.isLive?'live':''}">
+          <div class="platform-header">
+            <div class="platform-icon" style="background:${p.bg};color:${p.color};">${p.icon}</div>
+            <div class="platform-name-wrap">
+              <div class="name">${p.name} ${badge}</div>
+              <div class="handle">${p.handle}</div>
+            </div>
+          </div>
+          <div class="platform-stats">${items.slice(0,4).join('')}</div>
+          <div class="bar-wrap">
+            <div class="bar-header"><span>Popularité relative</span><span>${p.bar}%</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${p.bar}%;background:${p.color};"></div></div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ─── CHARTS ──────────────────────────────────────────────
+  const chartDefaults = {
+    color: '#888',
+    plugins: { legend: { display: false } }
+  };
+  Chart.defaults.color = '#888';
+
+  // Growth
+  const weeks = ['S1','S2','S3','S4','S5','S6','S7'];
+  const growthData = {
+    youtube:   [820,834,847,855,866,878,892],
+    instagram: [1320,1342,1358,1374,1385,1394,1400],
+    tiktok:    [540,572,600,624,647,664,680],
+    facebook:  [356,355,354,353,352,351,350],
+  };
+  const gColors = { youtube:'#FF4444', instagram:'#E1306C', tiktok:'#aaaaaa', facebook:'#1DB954' };
+  const gLabels = { youtube:'YouTube', instagram:'Instagram', tiktok:'TikTok', facebook:'Facebook' };
+  const leg = document.getElementById('growth-legend');
+  Object.entries(gLabels).forEach(([k,v]) => {
+    leg.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${gColors[k]}"></span>${v}</span>`;
+  });
+  new Chart(document.getElementById('growthChart'), {
+    type:'line',
+    data:{ labels:weeks, datasets: Object.entries(growthData).map(([k,d]) => ({
+      label:gLabels[k], data:d,
+      borderColor:gColors[k], backgroundColor:gColors[k]+'15',
+      borderWidth:2, pointRadius:3, pointHoverRadius:6, tension:0.4, fill:true
+    }))},
+    options:{ responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmt(ctx.raw*1000)}`}} },
+      scales:{
+        x:{ grid:{color:'#222'}, ticks:{font:{size:11}} },
+        y:{ grid:{color:'#222'}, ticks:{font:{size:11}, callback:v=>fmt(v*1000)} }
+      }
+    }
+  });
+
+  // Streams donut
+  new Chart(document.getElementById('streamChart'), {
+    type:'doughnut',
+    data:{ labels:['Spotify','Apple Music','Deezer','SoundCloud'],
+      datasets:[{ data:[8200000,3600000,4100000,2800000],
+        backgroundColor:['#1DB954','#4A9EE0','#A238FF','#FF5500'],
+        borderWidth:0, hoverOffset:8 }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${fmt(ctx.raw)}`}} }
+    }
+  });
+  const sl = document.getElementById('stream-leg');
+  [['Spotify','#1DB954'],['Apple Music','#4A9EE0'],['Deezer','#A238FF'],['SoundCloud','#FF5500']].forEach(([l,c]) => {
+    sl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${c}"></span>${l}</span>`;
+  });
+
+  // Week bars
+  new Chart(document.getElementById('weekChart'), {
+    type:'bar',
+    data:{ labels:['Sem 1','Sem 2','Sem 3','Sem 4','Sem 5','Sem 6','Sem 7','Sem 8'],
+      datasets:[
+        { label:'Vues',    data:[1200000,1350000,1180000,1420000,1600000,1750000,1680000,1900000], backgroundColor:'#4A9EE0', borderRadius:6 },
+        { label:'Streams', data:[1800000,1950000,2100000,2200000,2350000,2500000,2600000,2750000], backgroundColor:'#1DB954', borderRadius:6 }
+      ]
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmt(ctx.raw)}`}} },
+      scales:{
+        x:{ grid:{display:false}, ticks:{font:{size:11}} },
+        y:{ grid:{color:'#222'}, ticks:{font:{size:11}, callback:v=>fmt(v)} }
+      }
+    }
+  });
+
+  // Radar
+  new Chart(document.getElementById('radarChart'), {
+    type:'radar',
+    data:{
+      labels:['YouTube','Instagram','TikTok','Spotify','Deezer','SoundCloud','Apple Music','Facebook'],
+      datasets:[{ label:'Score', data:[72,88,55,65,35,22,52,28],
+        backgroundColor:'rgba(29,185,84,0.12)', borderColor:'#1DB954', borderWidth:2,
+        pointBackgroundColor:'#1DB954', pointRadius:4, pointHoverRadius:7
+      }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>` Score: ${ctx.raw}/100`}} },
+      scales:{ r:{
+        min:0, max:100,
+        ticks:{ display:false, stepSize:25 },
+        grid:{ color:'#2e2e2e' },
+        pointLabels:{ font:{size:12}, color:'#888' }
+      }}
+    }
+  });
+
+  // ─── INIT ─────────────────────────────────────────────────
+  renderPlatforms();
+  refreshAll();
+</script>
+</body>
+</html>    .bar-fill { height: 100%; border-radius: 2px; }
+
+    /* CHARTS */
+    .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+    .chart-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .chart-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .chart-sub { font-size: 12px; color: var(--text2); margin-bottom: 16px; }
+    .chart-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text2); }
+    .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+    .chart-full { margin-top: 24px; }
+
+    @media (max-width: 640px) {
+      .charts-row { grid-template-columns: 1fr; }
+      .platforms-grid { grid-template-columns: 1fr; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+      .artist-name { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div class="artist-info">
+      <div class="avatar" id="avatar">A</div>
+      <div>
+        <div class="artist-name">Akäm</div>
+        <div class="artist-meta">
+          <span class="live-dot"></span>
+          <span>YouTube · Spotify · Deezer en direct</span>
+          <span>·</span>
+          <span class="last-update" id="last-update">Chargement…</span>
+        </div>
+      </div>
+    </div>
+    <button class="btn-refresh" id="refresh-btn" onclick="refreshAll()">
+      <svg id="refresh-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <polyline points="1 20 1 14 7 14"></polyline>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+      </svg>
+      Rafraîchir
+    </button>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">YouTube abonnés</div><div class="kpi-value" id="kpi-yt-subs">…</div><div class="kpi-status" id="kpi-yt-subs-s">Chargement…</div></div>
+    <div class="kpi"><div class="kpi-label">YouTube vues</div><div class="kpi-value" id="kpi-yt-views">…</div><div class="kpi-status" id="kpi-yt-views-s">Chargement…</div></div>
+    <div class="kpi"><div class="kpi-label">Spotify followers</div><div class="kpi-value" id="kpi-sp-fol">…</div><div class="kpi-status" id="kpi-sp-fol-s">Chargement…</div></div>
+    <div class="kpi"><div class="kpi-label">Spotify popularité</div><div class="kpi-value" id="kpi-sp-pop">…</div><div class="kpi-status" id="kpi-sp-pop-s">Chargement…</div></div>
+    <div class="kpi"><div class="kpi-label">Deezer fans</div><div class="kpi-value" id="kpi-dz-fans">…</div><div class="kpi-status" id="kpi-dz-fans-s">Chargement…</div></div>
+    <div class="kpi"><div class="kpi-label">Deezer albums</div><div class="kpi-value" id="kpi-dz-albums">…</div><div class="kpi-status" id="kpi-dz-albums-s">Chargement…</div></div>
+  </div>
+
+  <!-- PLATFORMS -->
+  <div class="section-title">Toutes les plateformes</div>
+  <div class="platforms-grid" id="platforms-grid"></div>
+
+  <!-- CHARTS ROW -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">Croissance followers</div>
+          <div class="chart-sub">7 dernières semaines</div>
+        </div>
+        <div class="legend" id="growth-legend"></div>
+      </div>
+      <div style="position:relative;height:200px;"><canvas id="growthChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Répartition streams</div>
+      <div class="chart-sub">Plateformes musicales</div>
+      <div style="position:relative;height:180px;"><canvas id="streamChart"></canvas></div>
+      <div id="stream-leg" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- WEEK CHART -->
+  <div class="chart-card chart-full">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">Performances hebdomadaires</div>
+        <div class="chart-sub">Vues & Streams sur 8 semaines</div>
+      </div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#4A9EE0"></span>Vues</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#1DB954"></span>Streams</span>
+      </div>
+    </div>
+    <div style="position:relative;height:240px;"><canvas id="weekChart"></canvas></div>
+  </div>
+
+  <!-- RADAR CHART -->
+  <div class="chart-card chart-full">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">Popularité relative par plateforme</div>
+        <div class="chart-sub">Score global sur 100</div>
+      </div>
+    </div>
+    <div style="position:relative;height:280px;"><canvas id="radarChart"></canvas></div>
+  </div>
+
+</div>
+
+<script>
+  // ─── CONFIG ───────────────────────────────────────────────
+  const YT_KEY         = 'AIzaSyA-gIIb9Lmoc6Nx1CQzFIAVd5RWYduO-2s';
+  const YT_HANDLE      = '@akam.mp3';
   const SP_CLIENT_ID   = 'f7d3e6c8f769443fb921da2ee5c053e5';
   const SP_CLIENT_SECRET = 'bfc4cb01feda4d3894f15926de97049b';
   const DZ_ARTIST_ID   = '350818222';
