@@ -264,24 +264,24 @@
 
   // ─── DEEZER ──────────────────────────────────────────────
   async function fetchDeezer() {
+    const proxyUrl = `https://corsproxy.io/?https://api.deezer.com/artist/${DZ_ARTIST_ID}`;
     try {
-      const res = await fetch(`https://api.deezer.com/artist/${DZ_ARTIST_ID}`);
+      const res = await fetch(proxyUrl);
       const data = await res.json();
       if (data && data.id) {
         liveData.dzFans   = data.nb_fan;
         liveData.dzAlbums = data.nb_album;
-        document.getElementById('kpi-dz-fans').textContent    = fmt(liveData.dzFans);
-        document.getElementById('kpi-dz-albums').textContent  = liveData.dzAlbums;
-        document.getElementById('kpi-dz-fans-s').textContent  = '● En direct';
-        document.getElementById('kpi-dz-albums-s').textContent= '● En direct';
+        document.getElementById('kpi-dz-fans').textContent     = fmt(liveData.dzFans);
+        document.getElementById('kpi-dz-albums').textContent   = liveData.dzAlbums;
+        document.getElementById('kpi-dz-fans-s').textContent   = '● En direct';
+        document.getElementById('kpi-dz-albums-s').textContent = '● En direct';
       }
     } catch(e) {
-      // CORS fallback avec données connues
       liveData.dzFans = 6; liveData.dzAlbums = 2;
-      document.getElementById('kpi-dz-fans').textContent    = '6';
-      document.getElementById('kpi-dz-albums').textContent  = '2';
-      document.getElementById('kpi-dz-fans-s').textContent  = '● En direct';
-      document.getElementById('kpi-dz-albums-s').textContent= '● En direct';
+      document.getElementById('kpi-dz-fans').textContent     = '6';
+      document.getElementById('kpi-dz-albums').textContent   = '2';
+      document.getElementById('kpi-dz-fans-s').textContent   = '● Cache';
+      document.getElementById('kpi-dz-albums-s').textContent = '● Cache';
     }
     renderPlatforms();
   }
