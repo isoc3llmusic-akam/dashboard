@@ -196,7 +196,8 @@
     return n.toLocaleString('fr-FR');
   }
 
-  let liveData = { ytSubs:null, ytViews:null, ytVideos:null, spFollowers:null, spPop:null, spGenres:[], spImage:null, dzFans:null, dzAlbums:null };
+  window.liveData = { ytSubs:null, ytViews:null, ytVideos:null, spFollowers:null, spPop:null, spGenres:[], spImage:null, dzFans:null, dzAlbums:null };
+  let liveData = window.liveData;
 
   // ─── REFRESH BUTTON ──────────────────────────────────────
   function setRefreshing(v) {
@@ -230,7 +231,8 @@
   }
 
   // ─── SPOTIFY ─────────────────────────────────────────────
-  async function fetchSpotify() {
+  window.fetchSpotify = async function fetchSpotify() {
+    console.log("fetchSpotify called");
     try {
       const creds = btoa(`${SP_CLIENT_ID}:${SP_CLIENT_SECRET}`);
       const tr = await fetch('https://accounts.spotify.com/api/token', {
@@ -239,9 +241,12 @@
         body:'grant_type=client_credentials'
       });
       const td = await tr.json();
+      console.log('Token response:', td);
       const token = td.access_token;
+      if (!token) { console.error('No token!', td); return; }
       const sr = await fetch(`https://api.spotify.com/v1/artists/${SP_ARTIST_ID}`, { headers:{'Authorization':`Bearer ${token}`} });
       const artist = await sr.json();
+      console.log('Artist response:', artist);
       if (artist && artist.id) {
         liveData.spFollowers = artist.followers.total;
         liveData.spPop       = artist.popularity;
